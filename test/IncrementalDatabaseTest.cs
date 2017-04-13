@@ -7,8 +7,8 @@ namespace Incremental
     {
         public static readonly TheoryData<Func<IncrementalDatabase>> Databases = new TheoryData<Func<IncrementalDatabase>>
         {
-            () => new DefaultDatabase("");
-        }
+            () => new GitIncrementalDatabase(""),
+        };
 
         [Fact]
         public void Test1()
