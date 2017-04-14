@@ -8,7 +8,7 @@
     using LibGit2Sharp;
     using LevelDB;
 
-    class GitIncrementalDatabase : IIncrementalDatabase
+    class GitIncrementalDatabase : IncrementalDatabase
     {
         const int GitHashSize = 20;
 
@@ -36,22 +36,22 @@
             });
         }
 
-        public Hash[] LookupFunction(string function, string version, Hash[] inputHashes)
+        public override CryptoHash[] LookupFunction(string function, string version, CryptoHash[] inputHashes)
         {
             var key = EncodeKey(function, version, inputHashes);
             if (_db.TryGet(ReadOptions.Default, key, out var value))
                 return DecodeHashes(value.ToArray());
-            return Array.Empty<Hash>();
+            return Array.Empty<CryptoHash>();
         }
 
-        public void PutFunction(string function, string version, Hash[] inputHashes, Hash[] outputHashes)
+        public override void PutFunction(string function, string version, CryptoHash[] inputHashes, CryptoHash[] outputHashes)
         {
             var key = EncodeKey(function, version, inputHashes);
             var value = EncodeHashes(outputHashes);
             _db.Put(WriteOptions.Default, key, value);
         }
 
-        private static byte[] EncodeKey(string function, string version, Hash[] inputHashes)
+        private static byte[] EncodeKey(string function, string version, CryptoHash[] inputHashes)
         {
             var functionLength = Encoding.UTF8.GetByteCount(function);
             if (functionLength > byte.MaxValue) throw new ArgumentOutOfRangeException(nameof(function), "Cannot be bigger than 255");
@@ -84,7 +84,7 @@
             return bytes;
         }
 
-        private static byte[] EncodeHashes(Hash[] hashes)
+        private static byte[] EncodeHashes(CryptoHash[] hashes)
         {
             var length = 0;
             foreach (var hash in hashes)
@@ -105,45 +105,45 @@
             return bytes;
         }
 
-        private static Hash[] DecodeHashes(byte[] bytes)
+        private static CryptoHash[] DecodeHashes(byte[] bytes)
         {
             var i = 0;
-            var result = new List<Hash>((bytes.Length + GitHashSize) / (1 + GitHashSize));
+            var result = new List<CryptoHash>((bytes.Length + GitHashSize) / (1 + GitHashSize));
 
             while (i < bytes.Length)
             {
                 var hash = new byte[bytes[i++]];
                 Buffer.BlockCopy(bytes, i, hash, 0, hash.Length);
-                result.Add(new Hash(hash));
+                result.Add(new CryptoHash(hash));
                 i += hash.Length;
             }
 
             return result.ToArray();
         }
 
-        public Stream OpenReadBlob(Hash hash)
+        public override Stream OpenReadBlob(CryptoHash hash)
         {
             if (hash.Bytes == null || hash.Bytes.Length != GitHashSize) return null;
 
             return _repo.Lookup<Blob>(new ObjectId(hash.Bytes))?.GetContentStream();
         }
 
-        public HashWriteStream OpenWriteBlob()
+        public override HashWriteStream OpenWriteBlob()
         {
             return new GitHashWriteStream(_repo);
         }
 
-        public Task Pull()
+        public override Task Pull()
         {
             throw new NotImplementedException();
         }
 
-        public Task Push()
+        public override Task Push()
         {
             throw new NotImplementedException();
         }
 
-        public void Dispose()
+        public override void Dispose()
         {
             _db.Dispose();
             _repo.Dispose();
@@ -177,9 +177,9 @@
 
             protected override void Dispose(bool disposing) => _ms.Dispose();
 
-            public override Hash CloseAndGetHash()
+            public override CryptoHash CloseAndGetHash()
             {
-                return new Hash(_repo.ObjectDatabase.Write<Blob>(_ms.ToArray()).RawId);
+                return new CryptoHash(_repo.ObjectDatabase.Write<Blob>(_ms.ToArray()).RawId);
             }
         }
     }

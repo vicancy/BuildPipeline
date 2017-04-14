@@ -6,21 +6,21 @@ namespace Incremental
 
     public class IncrementalDatabaseTest
     {
-        public static readonly TheoryData<Func<IIncrementalDatabase>> Databases = new TheoryData<Func<IIncrementalDatabase>>
+        public static readonly TheoryData<Func<IncrementalDatabase>> Databases = new TheoryData<Func<IncrementalDatabase>>
         {
             () => new GitIncrementalDatabase("incremental-test-db"),
         };
 
         [Theory, MemberData(nameof(Databases))]
-        public void put_lookup_function(Func<IIncrementalDatabase> factory)
+        public void put_lookup_function(Func<IncrementalDatabase> factory)
         {
             using (var db = factory())
             {
-                var inputs = Enumerable.Range(0, 4).Select(i => new Hash(Guid.NewGuid().ToByteArray())).ToArray();
-                var outputs = Enumerable.Range(0, 2).Select(i => new Hash(Guid.NewGuid().ToByteArray())).ToArray();
-                var outputs2 = Enumerable.Range(0, 2).Select(i => new Hash(Guid.NewGuid().ToByteArray())).ToArray();
+                var inputs = Enumerable.Range(0, 4).Select(i => new CryptoHash(Guid.NewGuid().ToByteArray())).ToArray();
+                var outputs = Enumerable.Range(0, 2).Select(i => new CryptoHash(Guid.NewGuid().ToByteArray())).ToArray();
+                var outputs2 = Enumerable.Range(0, 2).Select(i => new CryptoHash(Guid.NewGuid().ToByteArray())).ToArray();
 
-                Assert.Empty(db.LookupFunction("function name", "1", new Hash[0]));
+                Assert.Empty(db.LookupFunction("function name", "1", new CryptoHash[0]));
 
                 db.PutFunction("a function name", "1.0.1-ac8f0ea", inputs, outputs);
                 Assert.Equal(outputs, db.LookupFunction("a function name", "1.0.1-ac8f0ea", inputs));
@@ -31,11 +31,11 @@ namespace Incremental
         }
 
         [Theory, MemberData(nameof(Databases))]
-        public void read_write_blob(Func<IIncrementalDatabase> factory)
+        public void read_write_blob(Func<IncrementalDatabase> factory)
         {
             using (var db = factory())
             {
-                Assert.Null(db.OpenReadBlob(new Hash(Guid.NewGuid().ToByteArray())));
+                Assert.Null(db.OpenReadBlob(new CryptoHash(Guid.NewGuid().ToByteArray())));
 
                 using (var writer = db.OpenWriteBlob())
                 {

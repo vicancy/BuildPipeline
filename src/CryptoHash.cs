@@ -2,21 +2,24 @@
 {
     using System;
 
-    public struct Hash : IEquatable<Hash>
+    public struct CryptoHash : IEquatable<CryptoHash>
     {
+        public static readonly CryptoHash Empty = new CryptoHash();
+
         public const int MaxSize = byte.MaxValue;
 
         public readonly byte[] Bytes;
         public bool HasValue => Bytes != null;
 
-        public Hash(byte[] bytes)
+        public CryptoHash(byte[] bytes)
         {
-            // For hash code calculation, requires at least 4 bytes
-            if (bytes != null && (bytes.Length > MaxSize || bytes.Length < 4))
-                throw new ArgumentOutOfRangeException(nameof(bytes));
-
-            Bytes = bytes;
+            Bytes = bytes != null && bytes.Length > MaxSize
+                ? throw new ArgumentOutOfRangeException(nameof(bytes))
+                : bytes;
         }
+
+        public static implicit operator byte[](CryptoHash hash) => hash.Bytes;
+        public static implicit operator CryptoHash(byte[] bytes) => new CryptoHash(bytes);
 
         public unsafe override string ToString()
         {
@@ -36,10 +39,10 @@
 
         public override bool Equals(object obj)
         {
-            return obj is Hash ch ? Equals(ch) : false;
+            return obj is CryptoHash ch ? Equals(ch) : false;
         }
 
-        public unsafe bool Equals(Hash other)
+        public unsafe bool Equals(CryptoHash other)
         {
             var data1 = Bytes;
             var data2 = other.Bytes;
