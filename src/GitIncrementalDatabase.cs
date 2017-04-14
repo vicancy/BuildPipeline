@@ -8,7 +8,7 @@
     using LibGit2Sharp;
     using LevelDB;
 
-    class GitIncrementalDatabase : IncrementalDatabase
+    class GitIncrementalDatabase : IIncrementalDatabase
     {
         private readonly DB _db;
         private readonly Repository _repo;
@@ -26,7 +26,7 @@
 
             _path = path;
             _repo = new Repository(path);
-            _db = DB.Open(Path.Combine(path, "incremental"), new Options
+            _db = DB.Open(Path.Combine(path, "db"), new Options
             {
                 CreateIfMissing = true,
                 // Most keys and values are hashes, so don't compress
@@ -34,22 +34,22 @@
             });
         }
 
-        public override CryptoHash[] LookupFunction(string function, string version, CryptoHash[] inputHashes)
+        public Hash[] LookupFunction(string function, string version, Hash[] inputHashes)
         {
             var key = EncodeKey(function, version, inputHashes);
             if (_db.TryGet(ReadOptions.Default, key, out var value))
                 return DecodeHashes(value.ToArray());
-            return Array.Empty<CryptoHash>();
+            return Array.Empty<Hash>();
         }
 
-        public override void UpsertFunction(string function, string version, CryptoHash[] inputHashes, CryptoHash[] outputHashes)
+        public void PutFunction(string function, string version, Hash[] inputHashes, Hash[] outputHashes)
         {
             var key = EncodeKey(function, version, inputHashes);
             var value = EncodeHashes(outputHashes);
             _db.Put(WriteOptions.Default, key, value);
         }
 
-        private static byte[] EncodeKey(string function, string version, CryptoHash[] inputHashes)
+        private static byte[] EncodeKey(string function, string version, Hash[] inputHashes)
         {
             var functionLength = Encoding.UTF8.GetByteCount(function);
             if (functionLength > byte.MaxValue) throw new ArgumentOutOfRangeException(nameof(function), "Cannot be bigger than 255");
@@ -82,7 +82,7 @@
             return bytes;
         }
 
-        private static byte[] EncodeHashes(CryptoHash[] hashes)
+        private static byte[] EncodeHashes(Hash[] hashes)
         {
             var length = 0;
             foreach (var hash in hashes)
@@ -103,47 +103,47 @@
             return bytes;
         }
 
-        private static CryptoHash[] DecodeHashes(byte[] bytes)
+        private static Hash[] DecodeHashes(byte[] bytes)
         {
             var i = 0;
-            var result = new List<CryptoHash>((bytes.Length + byte.MaxValue) / (1 + byte.MaxValue));
+            var result = new List<Hash>((bytes.Length + byte.MaxValue) / (1 + byte.MaxValue));
 
             while (i < bytes.Length)
             {
                 var hash = new byte[bytes[i++]];
                 Buffer.BlockCopy(bytes, i, hash, 0, hash.Length);
-                result.Add(new CryptoHash(hash));
+                result.Add(new Hash(hash));
                 i += hash.Length;
             }
 
             return result.ToArray();
         }
 
-        public override Stream OpenRead(CryptoHash hash)
+        public Stream Read(Hash hash)
         {
             return _repo.Lookup<Blob>(new ObjectId(hash.Bytes))?.GetContentStream();
         }
 
-        public override CryptoHash Write(byte[] data)
+        public Hash Write(byte[] data)
         {
             var hash = _repo.ObjectDatabase.Write<Blob>(data);
             
             // TODO: Need to put this hash to a tree to enable push/pull
 
-            return new CryptoHash(hash.RawId);
+            return new Hash(hash.RawId);
         }
 
-        public override Task Pull()
+        public Task Pull()
         {
             throw new NotImplementedException();
         }
 
-        public override Task Push()
+        public Task Push()
         {
             throw new NotImplementedException();
         }
 
-        public override void Dispose()
+        public void Dispose()
         {
             _db.Dispose();
             _repo.Dispose();
