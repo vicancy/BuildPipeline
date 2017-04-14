@@ -16,12 +16,18 @@
         void PutFunction(string function, string version, Hash[] inputHashes, Hash[] outputHashes);
 
         /// <summary>Opens a stream with the crypto hash</summary>
-        Stream Read(Hash hash);
+        Stream OpenReadBlob(Hash hash);
 
-        /// <summary>Writes some content to the database</summary>
-        Hash Write(byte[] content);
+        /// <summary>Opens a blob for writing, returns the hash code after writing is done</summary>
+        HashWriteStream OpenWriteBlob();
 
         Task Pull();
         Task Push();
+    }
+
+    public abstract class HashWriteStream : Stream
+    {
+        /// <summary>Closes the write stream and returns the hash code</summary>
+        public abstract Hash CloseAndGetHash();
     }
 }

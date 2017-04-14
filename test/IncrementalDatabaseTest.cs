@@ -29,5 +29,32 @@ namespace Incremental
                 Assert.Equal(outputs2, db.LookupFunction("a function name", "1.0.1-ac8f0ea", inputs));
             }
         }
+
+        [Theory, MemberData(nameof(Databases))]
+        public void read_write_blob(Func<IIncrementalDatabase> factory)
+        {
+            using (var db = factory())
+            {
+                Assert.Null(db.OpenReadBlob(new Hash(Guid.NewGuid().ToByteArray())));
+
+                using (var writer = db.OpenWriteBlob())
+                {
+                    var bytes = new byte[] { 0, 0, 0, 0 };
+                    writer.Write(new byte[] { 0, 0, 0, 0 }, 0, 4);
+
+                    var hash = writer.CloseAndGetHash();
+                    Assert.Equal("593f4708db84ac8fd0f5cc47c634f38c013fe9e4", hash.ToString());
+
+                    using (var reader = db.OpenReadBlob(hash))
+                    {
+                        Assert.Equal(0, reader.ReadByte());
+                        Assert.Equal(0, reader.ReadByte());
+                        Assert.Equal(0, reader.ReadByte());
+                        Assert.Equal(0, reader.ReadByte());
+                        Assert.Equal(-1, reader.ReadByte());
+                    }
+                }
+            }
+        }
     }
 }

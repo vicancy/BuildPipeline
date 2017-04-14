@@ -10,6 +10,8 @@
 
     class GitIncrementalDatabase : IIncrementalDatabase
     {
+        const int GitHashSize = 20;
+
         private readonly DB _db;
         private readonly Repository _repo;
         private readonly string _path;
@@ -106,7 +108,7 @@
         private static Hash[] DecodeHashes(byte[] bytes)
         {
             var i = 0;
-            var result = new List<Hash>((bytes.Length + byte.MaxValue) / (1 + byte.MaxValue));
+            var result = new List<Hash>((bytes.Length + GitHashSize) / (1 + GitHashSize));
 
             while (i < bytes.Length)
             {
@@ -119,18 +121,16 @@
             return result.ToArray();
         }
 
-        public Stream Read(Hash hash)
+        public Stream OpenReadBlob(Hash hash)
         {
+            if (hash.Bytes == null || hash.Bytes.Length != GitHashSize) return null;
+
             return _repo.Lookup<Blob>(new ObjectId(hash.Bytes))?.GetContentStream();
         }
 
-        public Hash Write(byte[] data)
+        public HashWriteStream OpenWriteBlob()
         {
-            var hash = _repo.ObjectDatabase.Write<Blob>(data);
-            
-            // TODO: Need to put this hash to a tree to enable push/pull
-
-            return new Hash(hash.RawId);
+            return new GitHashWriteStream(_repo);
         }
 
         public Task Pull()
@@ -147,6 +147,40 @@
         {
             _db.Dispose();
             _repo.Dispose();
+        }
+
+        class GitHashWriteStream : HashWriteStream
+        {
+            private readonly Repository _repo;
+            private readonly MemoryStream _ms = new MemoryStream();
+
+            public GitHashWriteStream(Repository repo)
+            {
+                _repo = repo;
+            }
+
+            public override void Write(byte[] buffer, int offset, int count)
+            {
+                _ms.Write(buffer, offset, count);
+            }
+
+            public override bool CanRead => false;
+            public override bool CanSeek => false;
+            public override bool CanWrite => true;
+            public override long Length => throw new NotSupportedException();
+            public override long Position { get => _ms.Position; set => throw new NotSupportedException(); }
+
+            public override void Flush() => _ms.Flush();
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+            public override void SetLength(long value) => throw new NotSupportedException();
+            public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+            protected override void Dispose(bool disposing) => _ms.Dispose();
+
+            public override Hash CloseAndGetHash()
+            {
+                return new Hash(_repo.ObjectDatabase.Write<Blob>(_ms.ToArray()).RawId);
+            }
         }
     }
 }
