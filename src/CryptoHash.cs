@@ -18,6 +18,13 @@
                 : bytes;
         }
 
+        public CryptoHash(byte[] bytes, int index, int count)
+        {
+            if (count > MaxSize) throw new ArgumentOutOfRangeException(nameof(bytes));
+            Bytes = new byte[count];
+            Buffer.BlockCopy(bytes, index, Bytes, 0, count);
+        }
+
         public static implicit operator byte[](CryptoHash hash) => hash.Bytes;
         public static implicit operator CryptoHash(byte[] bytes) => new CryptoHash(bytes);
 

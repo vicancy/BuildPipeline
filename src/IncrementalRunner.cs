@@ -8,7 +8,7 @@
     {
         private static readonly CryptoHashProvider[] s_defaultHashProviders = new CryptoHashProvider[]
         {
-            new FileStampCryptoHashProvider(),
+            new FileCryptoHashProvider(),
             new DefaultCryptoHashProvider(),
         };
 
@@ -21,12 +21,32 @@
             _hashProviders = hashProviders.Concat(s_defaultHashProviders).ToArray();
         }
 
-        public object[] Run(string function, string version, Func<object[], object[]> invoke, object[] inputs, Type[] outputTypes)
+        /// <summary>
+        /// Runs a function using incremental cache.
+        /// </summary>
+        /// <param name="function">Name of the function to run</param>
+        /// <param name="version">
+        /// Version of the function. Functions with the same name and version should always
+        /// produce the exact same outputs when inputs are same
+        /// </param>
+        /// <param name="invoke">Doing actual work when the function is invoked</param>
+        /// <param name="inputs">
+        /// Inputs to the function with corresponding crypto hash, 
+        /// crypto hash is optional for inputs and will be recalculated using
+        /// CryptoHashProvider when missing.
+        /// </param>
+        /// <param name="outputTypes">Types of function outputs</param>
+        /// <returns>Function outputs with corresponding crypto hash</returns>
+        public (CryptoHash, object)[] Run(string function,
+                                          string version,
+                                          Func<object[], object[]> invoke,
+                                          (CryptoHash, object)[] inputs,
+                                          Type[] outputTypes)
         {
             var inputHashes = new CryptoHash[inputs.Length];
             for (var i = 0; i < inputs.Length; i++)
             {
-                inputHashes[i] = GetCryptoHash(inputs[i]);
+                inputHashes[i] = inputs[i].Item1.HasValue ? inputs[i].Item1 : GetCryptoHash(inputs[i].Item2);
             }
 
             var outputHashes = _db.LookupFunction(function, version, inputHashes);
@@ -40,14 +60,14 @@
                 }
 
                 // Return result from the incremental cache
-                var outputs = new object[outputHashes.Length];
+                var outputs = new (CryptoHash, object)[outputHashes.Length];
 
                 for (var i = 0; i < outputs.Length; i++)
                 {
                     using (var input = _db.OpenReadBlob(outputHashes[i]))
                     {
                         var provider = GetProvider(outputTypes[i]);
-                        outputs[i] = provider.Deserialize(outputTypes[i], input);
+                        outputs[i] = (outputHashes[i], provider.Deserialize(outputTypes[i], input));
                     }
                 }
 
@@ -56,17 +76,23 @@
             else
             {
                 // Not found in the cache, invoke and fill the cache
-                var outputs = invoke(inputs);
-                if (outputs == null || outputs.Length <= 0)
+                var inputObjects = new object[inputs.Length];
+                for (var i = 0; i < inputs.Length; i++)
+                {
+                    inputObjects[i] = inputs[i].Item2;
+                }
+                var outputObjects = invoke(inputObjects);
+                if (outputObjects == null || outputObjects.Length <= 0)
                     throw new InvalidOperationException($"Invoke returns empty outputs");
 
-                for (var i = 0; i < outputs.Length; i++)
+                var outputs = new(CryptoHash, object)[outputObjects.Length];
+                for (var i = 0; i < outputObjects.Length; i++)
                 {
-                    var provider = GetProvider(outputs[i].GetType());
+                    var provider = GetProvider(outputObjects[i].GetType());
                     using (var output = _db.OpenWriteBlob())
                     {
-                        provider.Serialize(outputs[i], outputTypes[i], output);
-                        outputHashes[i] = GetCryptoHash(output.CloseAndGetHash());
+                        provider.Serialize(outputObjects[i], outputTypes[i], output);
+                        outputs[i] = (GetCryptoHash(output.CloseAndGetHash()), outputObjects[i]);
                     }
                 }
                 return outputs;

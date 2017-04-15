@@ -1,7 +1,9 @@
 namespace Incremental
 {
     using System;
+    using System.IO;
     using System.Linq;
+    using System.Text;
     using Xunit;
 
     public class IncrementalDatabaseTest
@@ -55,6 +57,16 @@ namespace Incremental
                     }
                 }
             }
+        }
+
+        [Fact]
+        public void calculate_git_blob_hash()
+        {
+            Assert.Equal(
+                "bd9dbf5aae1a3862dd1526723246b20206e5fc37",
+                new CryptoHash(
+                    GitBlobWriteStream.ComputeGitBlobHash(
+                        new MemoryStream(Encoding.UTF8.GetBytes("what is up, doc?")))).ToString());
         }
     }
 }

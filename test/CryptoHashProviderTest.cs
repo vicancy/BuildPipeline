@@ -6,7 +6,7 @@ namespace Incremental
     public class CryptoHashProviderTest
     {
         [Fact]
-        public void put_lookup_function()
+        public void default_crypto_hash_provider()
         {
             var provider = new DefaultCryptoHashProvider();
             Test(provider, true, "01");

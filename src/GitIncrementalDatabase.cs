@@ -3,52 +3,45 @@
     using System;
     using System.Collections.Generic;
     using System.IO;
+    using System.Security.Cryptography;
     using System.Text;
     using System.Threading.Tasks;
     using LibGit2Sharp;
-    using LevelDB;
 
     class GitIncrementalDatabase : IncrementalDatabase
     {
         const int GitHashSize = 20;
 
-        private readonly DB _db;
+        private readonly KeyValueStore _db;
         private readonly Repository _repo;
         private readonly string _path;
 
         /// <param name="path">Path including ".incremental"</param>
         public GitIncrementalDatabase(string path)
         {
-            Directory.CreateDirectory(path);
-
             if (!Repository.IsValid(path))
             {
+                Directory.CreateDirectory(path);
                 Repository.Init(path, isBare: true);
             }
 
             _path = path;
             _repo = new Repository(path);
-            _db = DB.Open(Path.Combine(path, "db"), new Options
-            {
-                CreateIfMissing = true,
-                // Most keys and values are hashes, so don't compress
-                Compression = CompressionType.NoCompression,
-            });
+            _db = new LevelDbStore(Path.Combine(path, "db"));
         }
 
         public override CryptoHash[] LookupFunction(string function, string version, CryptoHash[] inputHashes)
         {
             var key = EncodeKey(function, version, inputHashes);
-            if (_db.TryGet(ReadOptions.Default, key, out var value))
-                return DecodeHashes(value.ToArray());
-            return Array.Empty<CryptoHash>();
+            var value = _db.TryGet(key);
+            return value != null ? DecodeHashes(value) : Array.Empty<CryptoHash>();
         }
 
         public override void PutFunction(string function, string version, CryptoHash[] inputHashes, CryptoHash[] outputHashes)
         {
             var key = EncodeKey(function, version, inputHashes);
             var value = EncodeHashes(outputHashes);
-            _db.Put(WriteOptions.Default, key, value);
+            _db.Put(key, value);
         }
 
         private static byte[] EncodeKey(string function, string version, CryptoHash[] inputHashes)
@@ -128,9 +121,9 @@
             return _repo.Lookup<Blob>(new ObjectId(hash.Bytes))?.GetContentStream();
         }
 
-        public override HashWriteStream OpenWriteBlob()
+        public override BlobWriteStream OpenWriteBlob()
         {
-            return new GitHashWriteStream(_repo);
+            return new GitBlobWriteStream(_repo);
         }
 
         public override Task Pull()
@@ -148,38 +141,58 @@
             _db.Dispose();
             _repo.Dispose();
         }
+    }
 
-        class GitHashWriteStream : HashWriteStream
+    class GitBlobWriteStream : BlobWriteStream
+    {
+        private readonly Repository _repo;
+        private readonly MemoryStream _ms = new MemoryStream();
+
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+
+        public GitBlobWriteStream(Repository repo) => _repo = repo;
+
+        protected override void Dispose(bool disposing) => _ms.Dispose();
+
+        public override void Flush() => _ms.Flush();
+        public override void Write(byte[] buffer, int offset, int count) => _ms.Write(buffer, offset, count);
+
+        public override CryptoHash CloseAndGetHash() => _repo.ObjectDatabase.Write<Blob>(_ms.ToArray()).RawId;
+
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => _ms.Position; set => throw new NotSupportedException(); }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+
+        private static byte[] s_gitBlobHeader = Encoding.ASCII.GetBytes("blob ");
+        private static byte[] s_zeroByte = new byte[] { 0 };
+
+        public static byte[] ComputeGitBlobHash(Stream stream)
         {
-            private readonly Repository _repo;
-            private readonly MemoryStream _ms = new MemoryStream();
-
-            public GitHashWriteStream(Repository repo)
+            // https://git-scm.com/book/en/v1/Git-Internals-Git-Objects
+            using (var sha1 = IncrementalHash.CreateHash(HashAlgorithmName.SHA1))
             {
-                _repo = repo;
-            }
+                sha1.AppendData(s_gitBlobHeader);
+                sha1.AppendData(Encoding.ASCII.GetBytes(stream.Length.ToString()));
+                sha1.AppendData(s_zeroByte);
 
-            public override void Write(byte[] buffer, int offset, int count)
-            {
-                _ms.Write(buffer, offset, count);
-            }
+                var offset = 0;
+                var buffer = new byte[8196];
 
-            public override bool CanRead => false;
-            public override bool CanSeek => false;
-            public override bool CanWrite => true;
-            public override long Length => throw new NotSupportedException();
-            public override long Position { get => _ms.Position; set => throw new NotSupportedException(); }
+                while (true)
+                {
+                    var n = stream.Read(buffer, offset, buffer.Length);
+                    if (n <= 0) break;
 
-            public override void Flush() => _ms.Flush();
-            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-            public override void SetLength(long value) => throw new NotSupportedException();
-            public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+                    sha1.AppendData(buffer, 0, n);
+                }
 
-            protected override void Dispose(bool disposing) => _ms.Dispose();
-
-            public override CryptoHash CloseAndGetHash()
-            {
-                return new CryptoHash(_repo.ObjectDatabase.Write<Blob>(_ms.ToArray()).RawId);
+                return sha1.GetHashAndReset();
             }
         }
     }
