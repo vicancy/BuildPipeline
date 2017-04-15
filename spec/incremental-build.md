@@ -42,37 +42,34 @@
 - `FileStamp`: contains file last-modifed-time, hashed by `file-path:file-content`
 
 ```
-main()
-{
-    var pipelines = {
-        markdown : {
-            markdown_to_markdown_ast,
-            markdown_ast_to_markdown_html,
-            markdown_html_to_templated_html,
-        },
-        yaml : { },
-        csharp : { },
-        swagger : { },
-        java : { },
-        go : { },
-    };
+gen_file_structure() -> FileStructure
 
-    var config = load_config();
-    foreach (var work in config) {
-        var files = glob(config[work].src);
-        var pipeline = pipelines[work];
-        foreach (var file in files) {
-            run_incremental(pipeline, files, config[work].dst);
-        }
-    }
-}
+gen_header_footer(Config) -> HeaderFooter
 
-markdown_to_markdown_ast(FileStamp md) -> MarkdownSyntaxNode
+glob_markdown(Config, FileStructure) -> MarkdownFile[]
 
-markdown_to_html(FileStamp md, FileStamp[] files)
-             -> (FileStamp html, FileStamp[] references)
-{
+parse_markdown(MarkdownFile, FileStructure) -> MarkdownSyntaxTree
 
-}
+markdown_yaml_header(MarkdownSyntaxTree) -> MarkdownMetadata
+
+markdown_extension_1(MarkdownSyntaxTree) -> MarkdownMetadata
+
+markdown_extension_2(MarkdownMetadata) -> MarkdownMetadata
+
+markdown_extension_3(MarkdownSyntaxTree, MarkdownMetadata) -> MarkdownMetadata
+
+render_markdown(MarkdownSyntaxTree) -> MarkdownHtmlFile
+
+parse_toc(TocFile) -> TocSyntaxTree
+
+template_markdown(MarkdownHtmlFile, TocSyntaxTree, HeaderFooter) -> TemplatedMarkdownHtmlFile
+
+glob_csharp_source(Config) -> CSharpFile[]
+
+parse_csharp(CSharpFile) -> CSharpSyntaxTree
+
+render_csharp(CsharpSyntaxTree) -> CSharpHtmlFile
+
+template_csharp(CSharpHtmlFile, TocSyntaxTree, HeaderFooter) -> TemplatedCSharpHtmlFile
 
 ```
