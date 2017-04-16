@@ -22,13 +22,13 @@ namespace Incremental
                 var outputs = Enumerable.Range(0, 2).Select(i => new CryptoHash(Guid.NewGuid().ToByteArray())).ToArray();
                 var outputs2 = Enumerable.Range(0, 2).Select(i => new CryptoHash(Guid.NewGuid().ToByteArray())).ToArray();
 
-                Assert.Empty(db.LookupFunction("function name", "1", new CryptoHash[0]));
+                Assert.Empty(db.LookupFunction("unknown function", new CryptoHash[0]));
 
-                db.PutFunction("a function name", "1.0.1-ac8f0ea", inputs, outputs);
-                Assert.Equal(outputs, db.LookupFunction("a function name", "1.0.1-ac8f0ea", inputs));
+                db.PutFunction("a function name", inputs, outputs);
+                Assert.Equal(outputs, db.LookupFunction("a function name", inputs));
 
-                db.PutFunction("a function name", "1.0.1-ac8f0ea", inputs, outputs2);
-                Assert.Equal(outputs2, db.LookupFunction("a function name", "1.0.1-ac8f0ea", inputs));
+                db.PutFunction("a function name", inputs, outputs2);
+                Assert.Equal(outputs2, db.LookupFunction("a function name", inputs));
             }
         }
 

@@ -4,7 +4,7 @@
     using System.Collections.Generic;
     using System.Linq;
 
-    public class IncrementalRunner
+    public partial class IncrementalRunner : IDisposable
     {
         private static readonly CryptoHashProvider[] s_defaultHashProviders = new CryptoHashProvider[]
         {
@@ -15,6 +15,8 @@
         private readonly IncrementalDatabase _db;
         private readonly CryptoHashProvider[] _hashProviders;
 
+        public IncrementalRunner() : this(new GitIncrementalDatabase(".incremental")) { }
+        public IncrementalRunner(IncrementalDatabase db) : this(db, Enumerable.Empty<CryptoHashProvider>()) { }
         public IncrementalRunner(IncrementalDatabase db, IEnumerable<CryptoHashProvider> hashProviders)
         {
             _db = db ?? throw new ArgumentNullException(nameof(db));
@@ -24,9 +26,8 @@
         /// <summary>
         /// Runs a function using incremental cache.
         /// </summary>
-        /// <param name="function">Name of the function to run</param>
-        /// <param name="version">
-        /// Version of the function. Functions with the same name and version should always
+        /// <param name="name">
+        /// Functions with the same name should always
         /// produce the exact same outputs when inputs are same
         /// </param>
         /// <param name="invoke">Doing actual work when the function is invoked</param>
@@ -37,37 +38,33 @@
         /// </param>
         /// <param name="outputTypes">Types of function outputs</param>
         /// <returns>Function outputs with corresponding crypto hash</returns>
-        public (CryptoHash, object)[] Run(string function,
-                                          string version,
-                                          Func<object[], object[]> invoke,
-                                          (CryptoHash, object)[] inputs,
-                                          Type[] outputTypes)
+        public Hashed<object>[] Run(string name, Func<object[], object[]> invoke, Hashed<object>[] inputs, Type[] outputTypes)
         {
             var inputHashes = new CryptoHash[inputs.Length];
             for (var i = 0; i < inputs.Length; i++)
             {
-                inputHashes[i] = inputs[i].Item1.HasValue ? inputs[i].Item1 : GetCryptoHash(inputs[i].Item2);
+                inputHashes[i] = inputs[i].Hash.HasValue ? inputs[i].Hash : GetCryptoHash(inputs[i].Value);
             }
 
-            var outputHashes = _db.LookupFunction(function, version, inputHashes);
+            var outputHashes = _db.LookupFunction(name, inputHashes);
             if (outputHashes.Length > 0)
             {
                 if (outputHashes.Length != outputTypes.Length)
                 {
                     throw new InvalidOperationException(
-                        $"Output parameter count for '{function}' '{version}' " +
+                        $"Output parameter count for '{name}' " +
                         $"has changed from '{outputHashes.Length}' to '{outputTypes.Length}'");
                 }
 
                 // Return result from the incremental cache
-                var outputs = new (CryptoHash, object)[outputHashes.Length];
+                var outputs = new Hashed<object>[outputHashes.Length];
 
                 for (var i = 0; i < outputs.Length; i++)
                 {
                     using (var input = _db.OpenReadBlob(outputHashes[i]))
                     {
                         var provider = GetProvider(outputTypes[i]);
-                        outputs[i] = (outputHashes[i], provider.Deserialize(outputTypes[i], input));
+                        outputs[i] = new Hashed<object>(provider.Deserialize(outputTypes[i], input), outputHashes[i]);
                     }
                 }
 
@@ -79,20 +76,20 @@
                 var inputObjects = new object[inputs.Length];
                 for (var i = 0; i < inputs.Length; i++)
                 {
-                    inputObjects[i] = inputs[i].Item2;
+                    inputObjects[i] = inputs[i].Value;
                 }
                 var outputObjects = invoke(inputObjects);
                 if (outputObjects == null || outputObjects.Length <= 0)
                     throw new InvalidOperationException($"Invoke returns empty outputs");
 
-                var outputs = new(CryptoHash, object)[outputObjects.Length];
+                var outputs = new Hashed<object>[outputObjects.Length];
                 for (var i = 0; i < outputObjects.Length; i++)
                 {
                     var provider = GetProvider(outputObjects[i].GetType());
                     using (var output = _db.OpenWriteBlob())
                     {
                         provider.Serialize(outputObjects[i], outputTypes[i], output);
-                        outputs[i] = (GetCryptoHash(output.CloseAndGetHash()), outputObjects[i]);
+                        outputs[i] = new Hashed<object>(outputObjects[i], GetCryptoHash(output.CloseAndGetHash()));
                     }
                 }
                 return outputs;
@@ -111,7 +108,7 @@
                     break;
                 }
             }
-            
+
             return provider ?? throw new InvalidOperationException($"Don't know how to serialize '{type}'");
         }
 
@@ -131,5 +128,7 @@
 
             return hash.HasValue ? hash : throw new InvalidOperationException($"Cannot get hash value for '{input}'");
         }
+
+        public void Dispose() => _db.Dispose();
     }
 }

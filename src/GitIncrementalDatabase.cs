@@ -2,6 +2,7 @@
 {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
     using System.IO;
     using System.Security.Cryptography;
     using System.Text;
@@ -30,29 +31,26 @@
             _db = new LevelDbStore(Path.Combine(path, "db"));
         }
 
-        public override CryptoHash[] LookupFunction(string function, string version, CryptoHash[] inputHashes)
+        public override CryptoHash[] LookupFunction(string name, CryptoHash[] inputHashes)
         {
-            var key = EncodeKey(function, version, inputHashes);
+            var key = EncodeKey(name, inputHashes);
             var value = _db.TryGet(key);
             return value != null ? DecodeHashes(value) : Array.Empty<CryptoHash>();
         }
 
-        public override void PutFunction(string function, string version, CryptoHash[] inputHashes, CryptoHash[] outputHashes)
+        public override void PutFunction(string name, CryptoHash[] inputHashes, CryptoHash[] outputHashes)
         {
-            var key = EncodeKey(function, version, inputHashes);
+            var key = EncodeKey(name, inputHashes);
             var value = EncodeHashes(outputHashes);
             _db.Put(key, value);
         }
 
-        private static byte[] EncodeKey(string function, string version, CryptoHash[] inputHashes)
+        private static byte[] EncodeKey(string name, CryptoHash[] inputHashes)
         {
-            var functionLength = Encoding.UTF8.GetByteCount(function);
-            if (functionLength > byte.MaxValue) throw new ArgumentOutOfRangeException(nameof(function), "Cannot be bigger than 255");
+            Debug.Assert(!name.Contains("\0"));
 
-            var versionLength = Encoding.UTF8.GetByteCount(version);
-            if (functionLength > byte.MaxValue) throw new ArgumentOutOfRangeException(nameof(version), "Cannot be bigger than 255");
-
-            var length = 2 + functionLength + versionLength;
+            var nameLength = Encoding.UTF8.GetByteCount(name);
+            var length = nameLength + 1;
 
             foreach (var inputHash in inputHashes)
             {
@@ -60,12 +58,9 @@
             }
 
             var bytes = new byte[length];
-            var i = 1;
+            var i = Encoding.UTF8.GetBytes(name, 0, name.Length, bytes, 0);
 
-            bytes[i] = (byte)functionLength;
-            i += Encoding.UTF8.GetBytes(function, 0, function.Length, bytes, i);
-            bytes[i++] = (byte)versionLength;
-            i += Encoding.UTF8.GetBytes(version, 0, version.Length, bytes, i);
+            bytes[i++] = 0;
 
             foreach (var inputHash in inputHashes)
             {

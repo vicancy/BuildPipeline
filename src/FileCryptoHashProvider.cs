@@ -31,21 +31,29 @@
         private CryptoHash GetCryptoHash(string fullPath)
         {
             var key = Encoding.UTF8.GetBytes(fullPath);
-            var lastWriteTicks = new FileInfo(fullPath).LastWriteTimeUtc.Ticks;
+            var info = new FileInfo(fullPath);
+            var creationTicks = info.CreationTimeUtc.Ticks;
+            var lastWriteTicks = info.LastWriteTimeUtc.Ticks;
+
             var bytes = _db.TryGet(key);
-            if (bytes != null && bytes.Length == 8 /* last write ticks*/ + 20 /* git sha1 */)
+            if (bytes != null && bytes.Length == 8 + 8 + 20)
             {
-                var cachedLastWriteTicks = BitConverter.ToInt64(bytes, 0);
-                if (lastWriteTicks == cachedLastWriteTicks)
+                // creation ticks */ + 8 /* last write ticks*/ + 20 /* git sha1
+                var cachedCreationTicks = BitConverter.ToInt64(bytes, 0);
+                var cachedLastWriteTicks = BitConverter.ToInt64(bytes, 8);
+                if (creationTicks == cachedCreationTicks && lastWriteTicks == cachedLastWriteTicks)
+                {
                     return new CryptoHash(bytes, 8, bytes.Length - 8);
+                }
             }
 
             using (var stream = File.OpenRead(fullPath))
             {
                 var hash = GitBlobWriteStream.ComputeGitBlobHash(stream);
                 bytes = new byte[8 + hash.Length];
-                Buffer.BlockCopy(BitConverter.GetBytes(lastWriteTicks), 0, bytes, 0, 8);
-                Buffer.BlockCopy(hash, 0, bytes, 8, bytes.Length);
+                Buffer.BlockCopy(BitConverter.GetBytes(creationTicks), 0, bytes, 0, 8);
+                Buffer.BlockCopy(BitConverter.GetBytes(lastWriteTicks), 8, bytes, 0, 8);
+                Buffer.BlockCopy(hash, 0, bytes, 16, bytes.Length);
                 _db.Put(key, bytes);
                 return hash;
             }

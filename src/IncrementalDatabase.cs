@@ -12,12 +12,12 @@
         /// <summary>
         /// Looks up function result from the database
         /// </summary>
-        public abstract CryptoHash[] LookupFunction(string function, string version, CryptoHash[] inputHashes);
+        public abstract CryptoHash[] LookupFunction(string name, CryptoHash[] inputHashes);
 
         /// <summary>
         /// Updates or insert a function result to the database
         /// </summary>
-        public abstract void PutFunction(string function, string version, CryptoHash[] inputHashes, CryptoHash[] outputHashes);
+        public abstract void PutFunction(string name, CryptoHash[] inputHashes, CryptoHash[] outputHashes);
 
         /// <summary>
         /// Opens a stream with the crypto hash
