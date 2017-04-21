@@ -1,4 +1,4 @@
-namespace Incremental
+namespace Microsoft.BuildPipeline.Incremental
 {
     using System.IO;
     using Xunit;
