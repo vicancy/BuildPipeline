@@ -1,1 +1,1 @@
-﻿[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Incremental.Test")]
+﻿[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Microsoft.BuildPipeline.Test")]
